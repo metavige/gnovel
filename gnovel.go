@@ -8,6 +8,7 @@ import (
 	//"github.com/urfave/cli"
 	"fmt"
 	"github.com/PuerkitoBio/goquery"
+	"regexp"
 )
 
 var (
@@ -59,6 +60,24 @@ func main() {
 			fmt.Printf("[%v] %v - %v\n", i, title, href)
 		}
 		//fmt.Printf("%v", title)
+	})
+
+	re := regexp.MustCompile("post_([0-9]*)")
+	doc.Find("div#postlist div.plhin").Each(func(i int, s *goquery.Selection) {
+		id, exist := s.Attr("id")
+		if exist {
+			//fmt.Printf("id: %v \n", id)
+			matchData := re.FindAllStringSubmatch(id, -1)
+			if len(matchData) > 0 {
+				postId := matchData[0][1]
+				//fmt.Println(postId)
+				query := fmt.Sprintf("td#postmessage_%s", postId)
+				fmt.Println("query: ", query)
+				s.Find(query).Each(func(i int, s *goquery.Selection) {
+					fmt.Println(s.Text())
+				})
+			}
+		}
 	})
 	//
 	//
