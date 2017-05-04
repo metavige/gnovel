@@ -38,9 +38,10 @@ var (
 	url        = "https://ck101.com/thread-3397486-1-3.html"
 	pageRegExp = regexp.MustCompile("thread-(\\d+)-(\\d+)-(\\d+).html")
 	urlFormat  = "https://ck101.com/thread-%v-%d-%v.html"
-	tmpFileDir = "/Volumes/RamDisk/tmp"
+	tmpFileDir = os.TempDir()
 )
 
+//"/Volumes/RamDisk/tmp"
 func main() {
 	// init logger
 	var format = logging.MustStringFormatter("%{level} %{message}")
@@ -54,6 +55,7 @@ func main() {
 	if _, err := os.Stat(tmpFileDir); os.IsNotExist(err) {
 		os.Mkdir(tmpFileDir, os.ModePerm)
 	}
+
 	/*
 	  1. 找出標題
 	  2. 找出頁籤，並找到總共幾頁
@@ -155,6 +157,7 @@ func pringPage(pageURL string) {
 			if len(matchData) > 0 {
 				postID := matchData[0][1]
 				fmt.Println(postID)
+				// TODO: 解析內容，轉成文字
 				// query := fmt.Sprintf("td#postmessage_%s", postID)
 				// fmt.Println("query: ", query)
 				// s.Find(query).Each(func(i int, s *goquery.Selection) {
@@ -177,8 +180,8 @@ func download(url string, ch chan<- string) {
 		return
 	}
 
-	filename := path.Base(url)
-	f, _ := os.Create(fmt.Sprintf("%v/%v", tmpFileDir, filename))
+	destfile := fmt.Sprintf("%v/%v", tmpFileDir, path.Base(url))
+	f, _ := os.Create(destfile)
 	nbytes, err := io.Copy(f, resp.Body)
 	resp.Body.Close() // don't leak resources
 	if err != nil {
@@ -186,5 +189,5 @@ func download(url string, ch chan<- string) {
 		return
 	}
 	secs := time.Since(start).Seconds()
-	ch <- fmt.Sprintf("%.2fs  %7d  %s", secs, nbytes, url)
+	ch <- fmt.Sprintf("%.2fs  %7d  %s", secs, nbytes, destfile)
 }
