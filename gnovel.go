@@ -142,6 +142,7 @@ func getBookPageEnd(doc *goquery.Document) (pageEnd int) {
 	return bookEnd
 }
 
+// 將檔案的文章部分輸出成 TXT
 func pringPage(pageURL string) {
 	doc, _ := goquery.NewDocument(pageURL)
 	re := regexp.MustCompile("post_([0-9]*)")
@@ -163,6 +164,7 @@ func pringPage(pageURL string) {
 	})
 }
 
+// 下載檔案
 func download(url string, ch chan<- string) {
 	// fmt.Printf("下載：%v\n", pageURL)
 
