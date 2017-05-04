@@ -4,7 +4,12 @@ import (
 	//"os"
 
 	//"github.com/PuerkitoBio/goquery"
+	"io"
+	"net/http"
+	"os"
+	"path"
 	"strconv"
+	"time"
 
 	logging "github.com/op/go-logging"
 	//"github.com/urfave/cli"
@@ -30,8 +35,9 @@ type BookPageData struct {
 var (
 	log        = logging.MustGetLogger("gnovel")
 	url        = "https://ck101.com/thread-3397486-1-3.html"
-	pageRegExp = regexp.MustCompile("http(s?)://ck101.com/thread-(\\d+)-(\\d+)-(\\d+).html")
+	pageRegExp = regexp.MustCompile("thread-(\\d+)-(\\d+)-(\\d+).html")
 	urlFormat  = "https://ck101.com/thread-%v-%d-%v.html"
+	tmpFileDir = "/Volumes/RamDisk/tmp"
 )
 
 func main() {
@@ -44,7 +50,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-
+	if _, err := os.Stat(tmpFileDir); os.IsNotExist(err) {
+		os.Mkdir(tmpFileDir, os.ModePerm)
+	}
 	/*
 	  1. 找出標題
 	  2. 找出頁籤，並找到總共幾頁
@@ -69,19 +77,30 @@ func main() {
 
 	// 找出最後一頁之後，用正規表達式，找出最後一頁的數字，跑回圈抓完文件
 	if pageRegExp.Match([]byte(url)) {
-		startPageMatch := pageRegExp.FindStringSubmatch(url)
+		startPageMatch := pageRegExp.FindStringSubmatch(path.Base(url))
 		// fmt.Printf("Url Match: %d", len(startPageMatch))
-		pageStart, _ := strconv.Atoi(startPageMatch[3])
-		pageData := BookPageData{startPageMatch[2], pageStart, pageStart, startPageMatch[4]}
+		pageStart, _ := strconv.Atoi(startPageMatch[2])
+		pageData := BookPageData{startPageMatch[1], pageStart, pageStart, startPageMatch[3]}
 		pageData.BookEnd = getBookPageEnd(doc)
 
 		fmt.Printf("準備處理資料頁數: %d - %d\n", pageData.BookStart, pageData.BookEnd)
 
+		start := time.Now()
+		ch := make(chan string)
 		for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
 			pageURL := fmt.Sprintf(urlFormat, pageData.BookID, page, pageData.BookSeq)
 
-			pringPage(pageURL)
+			// pringPage(pageURL)
+			go download(pageURL, ch)
 		}
+
+		for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
+			fmt.Println(<-ch) // receive from channel ch
+		}
+		fmt.Printf("%.2fs elapsed\n", time.Since(start).Seconds())
+
+		// Cleanup Temp
+		os.RemoveAll(tmpFileDir)
 	} else {
 		// 沒抓到最後一頁的網址
 		fmt.Print("沒抓到最後一頁網址，不處理")
@@ -115,16 +134,15 @@ func getBookPageEnd(doc *goquery.Document) (pageEnd int) {
 		// title := s.Text()
 		href, _ := s.Attr("href")
 		// 找出最後一頁之後，用正規表達式，找出最後一頁的數字
-		hrefMatch := pageRegExp.FindStringSubmatch(href)
-		fmt.Printf("BookEnd: %v", hrefMatch[3])
-		bookEnd, _ = strconv.Atoi(hrefMatch[3])
+		hrefMatch := pageRegExp.FindStringSubmatch(path.Base(href))
+		fmt.Printf("BookEnd: %v", hrefMatch[2])
+		bookEnd, _ = strconv.Atoi(hrefMatch[2])
 	})
 
 	return bookEnd
 }
 
 func pringPage(pageURL string) {
-	fmt.Printf("下載：%v\n", pageURL)
 	doc, _ := goquery.NewDocument(pageURL)
 	re := regexp.MustCompile("post_([0-9]*)")
 	doc.Find("div#postlist div.plhin").Each(func(i int, s *goquery.Selection) {
@@ -143,4 +161,27 @@ func pringPage(pageURL string) {
 			}
 		}
 	})
+}
+
+func download(url string, ch chan<- string) {
+	// fmt.Printf("下載：%v\n", pageURL)
+
+	fmt.Println("Downloading " + url + " ...")
+	start := time.Now()
+	resp, err := http.Get(url)
+	if err != nil {
+		ch <- fmt.Sprint(err) // send to channel ch
+		return
+	}
+
+	filename := path.Base(url)
+	f, _ := os.Create(fmt.Sprintf("%v/%v", tmpFileDir, filename))
+	nbytes, err := io.Copy(f, resp.Body)
+	resp.Body.Close() // don't leak resources
+	if err != nil {
+		ch <- fmt.Sprintf("while reading %s: %v", url, err)
+		return
+	}
+	secs := time.Since(start).Seconds()
+	ch <- fmt.Sprintf("%.2fs  %7d  %s", secs, nbytes, url)
 }
