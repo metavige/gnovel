@@ -4,15 +4,34 @@ import (
 	//"os"
 
 	//"github.com/PuerkitoBio/goquery"
+	"strconv"
+
 	logging "github.com/op/go-logging"
 	//"github.com/urfave/cli"
 	"fmt"
-	"github.com/PuerkitoBio/goquery"
 	"regexp"
+
+	"github.com/PuerkitoBio/goquery"
 )
 
+type BookInfo struct {
+	Subject string
+	Title   string
+	Author  string
+}
+
+type BookPageData struct {
+	BookID    string
+	BookStart int
+	BookEnd   int
+	BookSeq   string
+}
+
 var (
-	log = logging.MustGetLogger("gnovel")
+	log        = logging.MustGetLogger("gnovel")
+	url        = "https://ck101.com/thread-3397486-1-3.html"
+	pageRegExp = regexp.MustCompile("http(s?)://ck101.com/thread-(\\d+)-(\\d+)-(\\d+).html")
+	urlFormat  = "https://ck101.com/thread-%v-%d-%v.html"
 )
 
 func main() {
@@ -21,7 +40,7 @@ func main() {
 	logging.SetFormatter(format)
 	logging.SetLevel(logging.INFO, "gnovel")
 
-	doc, err := goquery.NewDocument("https://ck101.com/thread-3397486-1-3.html")
+	doc, err := goquery.NewDocument(url)
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -43,25 +62,70 @@ func main() {
 	   接下來就可以整合起來，輸出成 text
 
 	*/
+
+	// 用正規表達式找出書名以及作者
+	bookInfo := getBookInfo(doc)
+	fmt.Printf("書名： %v\n", bookInfo.Subject)
+
+	// 找出最後一頁之後，用正規表達式，找出最後一頁的數字，跑回圈抓完文件
+	if pageRegExp.Match([]byte(url)) {
+		startPageMatch := pageRegExp.FindStringSubmatch(url)
+		// fmt.Printf("Url Match: %d", len(startPageMatch))
+		pageStart, _ := strconv.Atoi(startPageMatch[3])
+		pageData := BookPageData{startPageMatch[2], pageStart, pageStart, startPageMatch[4]}
+		pageData.BookEnd = getBookPageEnd(doc)
+
+		fmt.Printf("準備處理資料頁數: %d - %d\n", pageData.BookStart, pageData.BookEnd)
+
+		for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
+			pageURL := fmt.Sprintf(urlFormat, pageData.BookID, page, pageData.BookSeq)
+
+			pringPage(pageURL)
+		}
+	} else {
+		// 沒抓到最後一頁的網址
+		fmt.Print("沒抓到最後一頁網址，不處理")
+	}
+
+}
+
+// 抓出書名與作者
+func getBookInfo(doc *goquery.Document) (info BookInfo) {
+
 	doc.Find("h1#thread_subject").Each(func(i int, s *goquery.Selection) {
 		// For each item found, get the band and title
 		//band := s.Find("a").Text()
 		title := s.Text()
-		fmt.Printf("Review %d: %s\n", i, title)
+		// fmt.Printf("Review %d: %s\n", i, title)
+
+		r := regexp.MustCompile("\\[(\\S+)\\] (\\S+) 作者：(\\S+) \\((\\S+)\\)")
+		bookInfo := r.FindStringSubmatch(title)
+		// 用正規表達式找出書名以及作者
+		info = BookInfo{bookInfo[0], bookInfo[2], bookInfo[3]}
 	})
 
-	// Print result list
-	doc.Find("div#postlist div.pgt a").Each(func(i int, s *goquery.Selection) {
-		title := s.Text()
-		href, exist := s.Attr("href")
-		if exist {
+	// title = ""
+	return info
+}
 
-			//hrefs = append(hrefs, href)
-			fmt.Printf("[%v] %v - %v\n", i, title, href)
-		}
-		//fmt.Printf("%v", title)
+// 抓出最後一頁
+func getBookPageEnd(doc *goquery.Document) (pageEnd int) {
+	bookEnd := 1
+	doc.Find("div#postlist div.pgt a.last").Each(func(i int, s *goquery.Selection) {
+		// title := s.Text()
+		href, _ := s.Attr("href")
+		// 找出最後一頁之後，用正規表達式，找出最後一頁的數字
+		hrefMatch := pageRegExp.FindStringSubmatch(href)
+		fmt.Printf("BookEnd: %v", hrefMatch[3])
+		bookEnd, _ = strconv.Atoi(hrefMatch[3])
 	})
 
+	return bookEnd
+}
+
+func pringPage(pageURL string) {
+	fmt.Printf("下載：%v\n", pageURL)
+	doc, _ := goquery.NewDocument(pageURL)
 	re := regexp.MustCompile("post_([0-9]*)")
 	doc.Find("div#postlist div.plhin").Each(func(i int, s *goquery.Selection) {
 		id, exist := s.Attr("id")
@@ -69,26 +133,14 @@ func main() {
 			//fmt.Printf("id: %v \n", id)
 			matchData := re.FindAllStringSubmatch(id, -1)
 			if len(matchData) > 0 {
-				postId := matchData[0][1]
-				//fmt.Println(postId)
-				query := fmt.Sprintf("td#postmessage_%s", postId)
-				fmt.Println("query: ", query)
-				s.Find(query).Each(func(i int, s *goquery.Selection) {
-					fmt.Println(s.Text())
-				})
+				postID := matchData[0][1]
+				fmt.Println(postID)
+				// query := fmt.Sprintf("td#postmessage_%s", postID)
+				// fmt.Println("query: ", query)
+				// s.Find(query).Each(func(i int, s *goquery.Selection) {
+				// 	fmt.Println(s.Text())
+				// })
 			}
 		}
 	})
-	//
-	//
-	//app := cli.NewApp()
-	//
-	//app.Flags = []cli.Flag{
-	//	cli.StringFlag{
-	//		Name:  "url",
-	//		Usage: "download url",
-	//	},
-	//}
-	//
-	//app.Run(os.Args)
 }
