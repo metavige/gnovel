@@ -4,3 +4,7 @@
 只是單純對 [CK101](https://ck101.com) 做格式解析而已  
 
 順便學習一下 Golang  
+
+```
+gnovel -url [url]
+```
