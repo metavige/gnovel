@@ -150,13 +150,14 @@ func getBookInfo(doc *goquery.Document) (info BookInfo) {
 		title = strings.Replace(title, " (", "(", 1)
 		title = strings.Replace(title, "（", "(", 1)
 		title = strings.Replace(title, "）", ")", 1)
+		title = strings.Replace(title, "] [", "][", 1)
 
 		//fmt.Println(title)
-		r := regexp.MustCompile("\\[(\\S+)] (\\S+) 作者：(\\S+)\\((\\S+)\\)")
+		r := regexp.MustCompile("(\\[(\\S+)])?\\[(\\S+)] (\\S+) 作者：(\\S+)\\((\\S+)\\)")
 		bookInfo := r.FindStringSubmatch(title)
 		fmt.Println(bookInfo)
 		// 用正規表達式找出書名以及作者
-		info = BookInfo{bookInfo[0], bookInfo[2], bookInfo[3]}
+		info = BookInfo{bookInfo[0], bookInfo[4], bookInfo[5]}
 	})
 
 	// title = ""
