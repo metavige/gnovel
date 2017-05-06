@@ -144,16 +144,18 @@ func getBookInfo(doc *goquery.Document) (info BookInfo) {
 		// For each item found, get the band and title
 		//band := s.Find("a").Text()
 		title := s.Text()
-		fmt.Printf("Review %d: %s\n", i, title)
 		title = strings.Replace(title, "【", "[", 1)
-		title = strings.Replace(title, "】", "] ", 1)
+		title = strings.Replace(title, "】", "]", 1)
+		title = strings.Replace(title, "] ", "]", 1)
 		title = strings.Replace(title, " (", "(", 1)
 		title = strings.Replace(title, "（", "(", 1)
 		title = strings.Replace(title, "）", ")", 1)
 		title = strings.Replace(title, "] [", "][", 1)
+		title = strings.Replace(title, "  ", " ", 1)
+		fmt.Printf("Review %d: %s\n", i, title)
 
 		//fmt.Println(title)
-		r := regexp.MustCompile("(\\[(\\S+)])?\\[(\\S+)] (\\S+) 作者：(\\S+)\\((\\S+)\\)")
+		r := regexp.MustCompile("(\\[(\\S+)])?\\[(\\S+)](\\S+) 作者：(\\S+)\\((\\S+)\\)")
 		bookInfo := r.FindStringSubmatch(title)
 		fmt.Println(bookInfo)
 		// 用正規表達式找出書名以及作者
