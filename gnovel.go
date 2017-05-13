@@ -110,19 +110,22 @@ func main() {
 		var pageDocuments = make([]*goquery.Document, totalPages)
 
 		start := time.Now()
-		ch := make(chan BookDoc)
+		//ch := make(chan BookDoc)
 		for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
 			pageURL := fmt.Sprintf(urlFormat, pageData.BookID, page, pageData.BookSeq)
 
 			//printPage(pageURL, f)
-			go download(page, pageURL, ch)
-		}
-
-		for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
-			bookDoc := <-ch
-			//fmt.Printf("接收 [%d]\n", bookDoc.Page)
+			//go download(page, pageURL, ch)
+			bookDoc := download(page, pageURL)
 			pageDocuments[bookDoc.Page] = bookDoc.Doc
 		}
+
+		//for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
+		//	bookDoc := <-ch
+		//	//fmt.Printf("接收 [%d]\n", bookDoc.Page)
+		//	pageDocuments[bookDoc.Page] = bookDoc.Doc
+		//}
+
 		// print page
 		for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
 			fmt.Printf("處理第 %d 頁 ..... \n", page)
@@ -203,8 +206,9 @@ func printPage(doc *goquery.Document, file *os.File) {
 }
 
 // 將檔案轉換成 goquery.Document
-func download(page int, url string, ch chan<- BookDoc) {
+func download(page int, url string) BookDoc {
 	fmt.Println("Downloading " + url + " ...")
 	doc, _ := goquery.NewDocument(url)
-	ch <- BookDoc{page, doc}
+	//ch <- BookDoc{page, doc}
+	return BookDoc{page, doc}
 }
