@@ -172,7 +172,7 @@ func getBookInfo(doc *goquery.Document) (info BookInfo) {
 // 抓出最後一頁
 func getBookPageEnd(doc *goquery.Document) (pageEnd int) {
 	pageEnd = 1
-	doc.Find("div#postlist div.pgt a.last").Each(func(i int, s *goquery.Selection) {
+	doc.Find("div#postlist div.pgt div.pg a.last").Each(func(i int, s *goquery.Selection) {
 		// title := s.Text()
 		href, _ := s.Attr("href")
 		// 找出最後一頁之後，用正規表達式，找出最後一頁的數字
