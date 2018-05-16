@@ -4,15 +4,17 @@ package main
 import (
 	"fmt"
 	"os"
-	"path"
 	"regexp"
 	"strconv"
 	"time"
 
 	"flag"
+	"strings"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/op/go-logging"
-	"strings"
+	"net/url"
+	"net/http"
 )
 
 type BookInfo struct {
@@ -21,11 +23,16 @@ type BookInfo struct {
 	Author  string
 }
 
+type NovelUrlQueryData struct {
+	BookID int
+	Page   int
+}
+
 type BookPageData struct {
-	BookID    string
+	BookID    int
 	BookStart int
 	BookEnd   int
-	BookSeq   string
+	//BookSeq   string
 }
 
 type BookDoc struct {
@@ -34,19 +41,17 @@ type BookDoc struct {
 }
 
 var (
-	log = logging.MustGetLogger("gnovel")
-	//url        = "https://ck101.com/thread-3536263-1-1.html"
-	pageRegExp = regexp.MustCompile("thread-(\\d+)-(\\d+)-(\\d+).html")
-	urlFormat  = "https://ck101.com/thread-%v-%d-%v.html"
+	log       = logging.MustGetLogger("gnovel")
+	urlFormat = "https://ck101.com/forum.php?mod=viewthread&tid=%v&page=%d"
 )
 
 func main() {
 
-	novelUrl := flag.String("url", "", "url")
+	novelURL := flag.String("url", "", "url")
 	flag.Parse()
 
-	url := *novelUrl
-	if url == "" {
+	novelURLStr := *novelURL
+	if novelURLStr == "" {
 		fmt.Println("no url")
 		os.Exit(0)
 	}
@@ -55,11 +60,6 @@ func main() {
 	var format = logging.MustStringFormatter("%{level} %{message}")
 	logging.SetFormatter(format)
 	logging.SetLevel(logging.INFO, "gnovel")
-
-	doc, err := goquery.NewDocument(url)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	/*
 	  1. 找出標題
@@ -79,65 +79,68 @@ func main() {
 
 	*/
 
+	var err error
+
+	doc := getWebDocument(novelURLStr)
+
 	// 用正規表達式找出書名以及作者
 	bookInfo := getBookInfo(doc)
 	fmt.Printf("書名： %v\n", bookInfo.Subject)
 
-	// 找出最後一頁之後，用正規表達式，找出最後一頁的數字，跑回圈抓完文件
-	if pageRegExp.Match([]byte(url)) {
-		startPageMatch := pageRegExp.FindStringSubmatch(path.Base(url))
-		// fmt.Printf("Url Match: %d", len(startPageMatch))
-		pageStart, _ := strconv.Atoi(startPageMatch[2])
-		pageData := BookPageData{startPageMatch[1], pageStart, pageStart, startPageMatch[3]}
-		pageData.BookEnd = getBookPageEnd(doc)
+	urlPageData := getNovelUrlInfo(novelURLStr)
 
-		fmt.Printf("準備處理資料頁數: %d - %d\n", pageData.BookStart, pageData.BookEnd)
+	pageStart := urlPageData.Page
+	pageData := BookPageData{urlPageData.BookID, pageStart, pageStart}
+	pageData.BookEnd = getBookPageEnd(doc)
 
-		// Open File
-		novelFile := fmt.Sprintf("%v - %v.txt", bookInfo.Author, bookInfo.Title)
-		var f *os.File
-		var err error
-		if _, err = os.Stat(novelFile); os.IsExist(err) {
-			os.Remove(novelFile)
-		}
-		f, err = os.Create(novelFile)
-		if err != nil {
-			panic(err)
-		}
-		defer f.Close()
+	fmt.Printf("準備處理資料頁數: %d - %d\n", pageData.BookStart, pageData.BookEnd)
 
-		totalPages := pageData.BookEnd - pageData.BookStart + 2
-		var pageDocuments = make([]*goquery.Document, totalPages)
+	// Open File
+	novelFile := fmt.Sprintf("%v - %v.txt", bookInfo.Author, bookInfo.Title)
+	var f *os.File
+	if _, err = os.Stat(novelFile); os.IsExist(err) {
+		os.Remove(novelFile)
+	}
+	f, err = os.Create(novelFile)
+	if err != nil {
+		panic(err)
+	}
+	defer f.Close()
 
-		start := time.Now()
-		//ch := make(chan BookDoc)
-		for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
-			pageURL := fmt.Sprintf(urlFormat, pageData.BookID, page, pageData.BookSeq)
+	totalPage := pageData.BookEnd - pageData.BookStart
+	var pageDocuments = make([]*goquery.Document, totalPage + 2)
 
-			//printPage(pageURL, f)
-			//go download(page, pageURL, ch)
-			bookDoc := download(page, pageURL)
-			pageDocuments[bookDoc.Page] = bookDoc.Doc
-		}
+	start := time.Now()
+	//ch := make(chan BookDoc)
+	for page := 0; page <= totalPage; page++ {
+		pageURL := fmt.Sprintf(urlFormat, pageData.BookID, page)
 
-		//for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
-		//	bookDoc := <-ch
-		//	//fmt.Printf("接收 [%d]\n", bookDoc.Page)
-		//	pageDocuments[bookDoc.Page] = bookDoc.Doc
-		//}
-
-		// print page
-		for page := pageData.BookStart; page <= pageData.BookEnd; page++ {
-			fmt.Printf("處理第 %d 頁 ..... \n", page)
-			printPage(pageDocuments[page], f)
-		}
-
-		fmt.Printf("%.2fs elapsed\n", time.Since(start).Seconds())
-	} else {
-		// 沒抓到最後一頁的網址
-		fmt.Print("沒抓到最後一頁網址，不處理")
+		//printPage(pageURL, f)
+		//go download(page, pageURL, ch)
+		bookDoc := download(page, pageURL)
+		pageDocuments[page] = bookDoc.Doc
 	}
 
+	// print page
+	for page := 1; page <= totalPage; page++ {
+		fmt.Printf("處理第 %d 頁 ..... \n", page)
+		printPage(pageDocuments[page], f)
+	}
+
+	fmt.Printf("%.2fs elapsed\n", time.Since(start).Seconds())
+
+}
+
+// 因為 goquery 有改介面，所以把 url -> document 的部分獨立成一個方法
+func getWebDocument(url string) (doc *goquery.Document) {
+	res, e := http.Get(url)
+	if e != nil {
+		log.Fatal(e)
+	}
+	defer res.Body.Close()
+
+	doc, _ = goquery.NewDocumentFromReader(res.Body)
+	return doc
 }
 
 // 抓出書名與作者
@@ -175,10 +178,11 @@ func getBookPageEnd(doc *goquery.Document) (pageEnd int) {
 	doc.Find("div#postlist div.pgt div.pg a.last").Each(func(i int, s *goquery.Selection) {
 		// title := s.Text()
 		href, _ := s.Attr("href")
-		// 找出最後一頁之後，用正規表達式，找出最後一頁的數字
-		hrefMatch := pageRegExp.FindStringSubmatch(path.Base(href))
-		fmt.Printf("BookEnd: %v", hrefMatch[2])
-		pageEnd, _ = strconv.Atoi(hrefMatch[2])
+
+		urlPageData := getNovelUrlInfo(href)
+
+		fmt.Printf("BookEnd: %v\n", urlPageData.Page)
+		pageEnd = urlPageData.Page
 	})
 
 	return
@@ -208,7 +212,25 @@ func printPage(doc *goquery.Document, file *os.File) {
 // 將檔案轉換成 goquery.Document
 func download(page int, url string) BookDoc {
 	fmt.Println("Downloading " + url + " ...")
-	doc, _ := goquery.NewDocument(url)
+
+	res, e := http.Get(url)
+	if e != nil {
+		log.Fatal(e)
+	}
+	defer res.Body.Close()
+
+	doc, _ := goquery.NewDocumentFromReader(res.Body)
 	//ch <- BookDoc{page, doc}
 	return BookDoc{page, doc}
+}
+
+func getNovelUrlInfo(href string) (data NovelUrlQueryData) {
+
+	u, _ := url.Parse(href)
+	m, _ := url.ParseQuery(u.RawQuery)
+
+	data.BookID, _ = strconv.Atoi(m["tid"][0])
+	data.Page, _ = strconv.Atoi(m["page"][0])
+
+	return data
 }
