@@ -11,10 +11,11 @@ import (
 	"flag"
 	"strings"
 
+	"net/http"
+	"net/url"
+
 	"github.com/PuerkitoBio/goquery"
 	"github.com/op/go-logging"
-	"net/url"
-	"net/http"
 )
 
 type BookInfo struct {
@@ -108,11 +109,11 @@ func main() {
 	defer f.Close()
 
 	totalPage := pageData.BookEnd - pageData.BookStart
-	var pageDocuments = make([]*goquery.Document, totalPage + 2)
+	var pageDocuments = make([]*goquery.Document, totalPage+2)
 
 	start := time.Now()
 	//ch := make(chan BookDoc)
-	for page := 0; page <= totalPage; page++ {
+	for page := 1; page <= totalPage; page++ {
 		pageURL := fmt.Sprintf(urlFormat, pageData.BookID, page)
 
 		//printPage(pageURL, f)
@@ -160,12 +161,15 @@ func getBookInfo(doc *goquery.Document) (info BookInfo) {
 		title = strings.Replace(title, "  ", " ", 1)
 		fmt.Printf("Review %d: %s\n", i, title)
 
+		fmt.Println("title -> " + title)
 		//fmt.Println(title)
-		r := regexp.MustCompile("(\\[(\\S+)])?\\[(\\S+)](\\S+) 作者：(\\S+)\\((\\S+)\\)")
+		reg1 := "\\[(\\S+)\\](\\S+) 作者：(\\S+)"
+		// reg2 := "(\\[(\\S+)])?\\[(\\S+)](\\S+) 作者：(\\S+)\\((\\S+)\\)"
+		r := regexp.MustCompile(reg1)
 		bookInfo := r.FindStringSubmatch(title)
-		fmt.Println(bookInfo)
+		fmt.Println("bookInfo: ", bookInfo[0])
 		// 用正規表達式找出書名以及作者
-		info = BookInfo{bookInfo[0], bookInfo[4], bookInfo[5]}
+		info = BookInfo{bookInfo[1], bookInfo[2], bookInfo[3]}
 	})
 
 	// title = ""
